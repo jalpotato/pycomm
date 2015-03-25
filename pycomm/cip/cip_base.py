@@ -303,7 +303,7 @@ def build_multiple_service(rp_list, sequence=None):
 
 def parse_multiple_request(message, tags, typ):
     """ parse_multi_request
-    This function should be used to parse the message replayed to a multi request service rapped around the
+    This function should be used to parse the reply message to a multi request service rapped around the
     send_unit_data message.
 
 
