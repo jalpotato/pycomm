@@ -356,7 +356,8 @@ S_DATA_TYPE = {
 	'TIME': 0xdb,     # Duration in milliseconds
 	'EPATH': 0xdc,    # CIP Path segment
 	'ENGUNIT': 0xdd,  # Engineering Units
-	'STRINGI': 0xde   # International character string
+	'STRINGI': 0xde,   # International character string
+	'STRUCT': 0x02a0	# UDT structure
 }
 
 I_DATA_TYPE = {
@@ -389,7 +390,22 @@ I_DATA_TYPE = {
 	0xdb: 'TIME',     # Duration in milliseconds
 	0xdc: 'EPATH',    # CIP Path segment
 	0xdd: 'ENGUNIT',  # Engineering Units
-	0xde: 'STRINGI'    # International character string
+	0xde: 'STRINGI',    # International character string
+	0x02a0: 'STRUCT'	# UDT structure
+}
+
+DATA_FUNCTION_SIZE = {
+	'BOOL': 1,
+	'SINT': 1,			# Signed 8-bit integer
+	'INT': 2,			# Signed 16-bit integer
+	'DINT': 4,			# Signed 32-bit integer
+	'REAL': 4,			# 32-bit floating point
+	'LINT': 8,
+	'BYTE': 1,			# byte string 8-bits
+	'WORD': 2,			# byte string 16-bits
+	'DWORD': 4,			# byte string 32-bits
+	'LWORD': 8,			# byte string 64-bits
+	'STRUCT': -1		# structure various size
 }
 
 REPLY_INFO = {

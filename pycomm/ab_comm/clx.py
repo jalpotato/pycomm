@@ -58,6 +58,7 @@ class Driver(object):
 		self._message = None
 		self._target_cid = None
 		self._target_is_connected = False
+		self._tag_array = []
 		self._tag_list = []
 		self._tag_struct = {}
 		self._tag_template = {}
@@ -106,7 +107,7 @@ class Driver(object):
 		"""
 		h = command                                 # Command UINT
 		h += pack_uint(length)                      # Length UINT
-		h += pack_dint(self._session)                # Session Handle UDINT
+		h += pack_dint(self._session)               # Session Handle UDINT
 		h += pack_dint(0)                           # Status UDINT
 		h += self.attribs['context']                # Sender Context 8 bytes
 		h += pack_dint(self.attribs['option'])      # Option UDINT
@@ -241,15 +242,23 @@ class Driver(object):
 				idx += tag_length
 				symbol_type = unpack_uint(tags_returned[idx:idx+2])
 				idx += 2
+				attr_4 = unpack_dint(tags_returned[idx:idx+4])
+				idx += 4
 				#self._tag_list.append((instance, tag_name, symbol_type))
-				self._tag_list.append({'instance_id': instance, 'tag_name': tag_name, 'symbol_type': symbol_type})
+				self._tag_list.append({'instance_id': instance, 'tag_name': tag_name, 'symbol_type': symbol_type, 'attr_3': attr_4})
 
 			if status == SUCCESS:
 				self._last_instance = -1
 			elif status == 0x06:
 				self._last_instance = instance + 1
 			else:
-				self._status = (1, 'unknown status during _parse_tag_list')
+				if status in SERVICE_STATUS:
+					self._status = (3, "_parse_template status:{0} - Extend status:{1}".format(
+						SERVICE_STATUS[status], get_extended_status(self._reply, 48)))
+					self.logger.warning(self._status)
+				else:
+					self._status = (1, 'unknown status {0} during _parse_template'.format(status))
+					self.logger.warning(self._status)
 				self.logger.warning(self._status)
 				self._last_instance = -1
 
@@ -294,11 +303,12 @@ class Driver(object):
 				idx += 2
 				self._tag_struct['struct_handle'] = unpack_uint(attrs_returned[idx:idx + 2])
 
-			# self._tag_list.append((instance, tag_name, symbol_type))
-			# self._tag_struct.append({'instance_id': instance, 'tag_name': tag_name, 'symbol_type': symbol_type})
-
 			if status != SUCCESS:
-				self._status = (1, 'unknown status during _parse_tag_list')
+				if status in SERVICE_STATUS:
+					self._status = (3, "_parse_tag_list status:{0} - Extend status:{1}".format(
+						SERVICE_STATUS[status], get_extended_status(self._reply, 48)))
+				else:
+					self._status = (1, 'unknown status {0} during _parse_tag_list'.format(status))
 				self.logger.warning(self._status)
 
 		except Exception as e:
@@ -326,8 +336,13 @@ class Driver(object):
 			elif status == 0x06:
 				self._last_instance += tags_returned_length
 			else:
-				self._status = (1, 'unknown status {0} during _parse_template'.format(status))
-				self.logger.warning(self._status)
+				if status in SERVICE_STATUS:
+					self._status = (3, "_parse_template status:{0} - Extend status:{1}".format(
+						SERVICE_STATUS[status], get_extended_status(self._reply, 48)))
+					self.logger.warning(self._status)
+				else:
+					self._status = (1, 'unknown status {0} during _parse_template'.format(status))
+					self.logger.warning(self._status)
 				self._last_instance = -1
 
 		except Exception as e:
@@ -349,9 +364,14 @@ class Driver(object):
 		try:
 			while idx < fragment_returned_length:
 				typ = I_DATA_TYPE[data_type]
-				value = UNPACK_DATA_FUNCTION[typ](fragment_returned[idx:idx+DATA_FUNCTION_SIZE[typ]])
-				idx += DATA_FUNCTION_SIZE[typ]
-				self._tag_list.append((self._last_position, value))
+				if typ != 'STRUCT':
+					value = UNPACK_DATA_FUNCTION[typ](fragment_returned[idx:idx+DATA_FUNCTION_SIZE[typ]])
+					idx += DATA_FUNCTION_SIZE[typ]
+					self._tag_array.append(value)
+				else:
+					value = UNPACK_DATA_FUNCTION[typ](fragment_returned[idx:])
+					self._tag_array.append(value)
+					idx = fragment_returned_length
 				self._last_position += 1
 			if status == SUCCESS:
 				self._byte_offset = -1
@@ -653,12 +673,17 @@ class Driver(object):
 		else:
 			# Get the data type
 			data_type = unpack_uint(self._reply[50:52])
-			try:
-				return UNPACK_DATA_FUNCTION[I_DATA_TYPE[data_type]](self._reply[52:]), I_DATA_TYPE[data_type]
-			except LookupError:
-				self._status = (6, "Unknown data type returned by read_tag")
-				self.logger.warning(self._status)
-				return None
+			status = unpack_sint(self._reply[48:49])
+			if status == SUCCESS:
+				try:
+					return UNPACK_DATA_FUNCTION[I_DATA_TYPE[data_type]](self._reply[52:]), I_DATA_TYPE[data_type]
+				except LookupError:
+					self._status = (6, "Unknown data type returned by read_tag")
+					self.logger.warning(self._status)
+					return None
+			else:
+				if get_extended_status(self._reply, 48) == EXTEND_CODES[4][0]:
+					return -1, 0
 
 	def read_array(self, tag, counts):
 		""" read array of atomic data type from a connected plc
@@ -701,6 +726,7 @@ class Driver(object):
 					pack_dint(self._byte_offset)
 				]
 
+			self._tag_array = []
 			self.send_unit_data(
 				build_common_packet_format(
 					DATA_ITEM['Connected'],
@@ -709,7 +735,15 @@ class Driver(object):
 					addr_data=self._target_cid,
 				))
 
-		return self._tag_list
+		# Get the data type
+		data_type = unpack_uint(self._reply[50:52])
+		try:
+			return self._tag_array, I_DATA_TYPE[data_type]
+		except LookupError:
+			self._status = (6, "Unknown data type returned by read_array")
+			self.logger.warning(self._status)
+			return None
+		#return self._tag_list
 
 	def write_tag(self, tag, value=None, typ=None):
 		""" write tag/tags from a connected plc
@@ -724,7 +758,7 @@ class Driver(object):
 		The type accepted are:
 			- BOOL
 			- SINT
-			- INT'
+			- INT
 			- DINT
 			- REAL
 			- LINT
@@ -925,9 +959,10 @@ class Driver(object):
 				'\x00',
 				pack_uint(self._last_instance),          # The instance
 				# Request Data
-				pack_uint(2),   # Number of attributes to retrieve
+				pack_uint(3),   # Number of attributes to retrieve
 				pack_uint(1),   # Attribute 1: Symbol name
-				pack_uint(2)    # Attribute 2: Symbol type
+				pack_uint(2),    # Attribute 2: Symbol type
+				pack_uint(3)  # Attribute 4: ?
 			]
 
 			self.send_unit_data(
@@ -985,7 +1020,7 @@ class Driver(object):
 		return self._tag_struct
 
 	def read_template(self, instance_id, to_read, mem_cnt):
-		""" get a list of the tags in the plc
+		""" get a list of the members of a template
 
 		"""
 
@@ -1051,12 +1086,13 @@ class Driver(object):
 
 			member = 0
 			names = string.split(template_returned[idx:], '\x00')
-			if len(names) != mem_cnt + 1:
+			if len(names) < mem_cnt + 1:
 				err = "Failed to read member names {" + str(len(names)) + "} {" + str(mem_cnt + 1) + "}."
 				raise Exception(err)
 
 			while member < mem_cnt:
-				template_members[member]['member_name'] = names[member + 1]
+				#template_members[member]['member_name'] = names[member + 1]
+				template_members[member]['tag_name'] = names[member + 1]
 				member += 1
 
 			self._tag_template = {'name': names[0], 'members': template_members}
