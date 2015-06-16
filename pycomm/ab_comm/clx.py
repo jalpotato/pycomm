@@ -371,6 +371,7 @@ class Driver(object):
 				else:
 					value = UNPACK_DATA_FUNCTION[typ](fragment_returned[idx:])
 					self._tag_array.append(value)
+					fragment_returned_length -= 2
 					idx = fragment_returned_length
 				self._last_position += 1
 			if status == SUCCESS:
@@ -378,7 +379,8 @@ class Driver(object):
 			elif status == 0x06:
 				self._byte_offset += fragment_returned_length
 			else:
-				self.logger.warning(2, 'unknown status during _parse_fragment')
+				self._status = (2, 'unknown status during _parse_fragment')
+				self.logger.warning(self._status)
 				self._byte_offset = -1
 		except Exception as e:
 			self._status = (2, "Error :{0} inside _parse_fragment".format(e))
@@ -672,18 +674,20 @@ class Driver(object):
 			return self._parse_multiple_request_read(tag)
 		else:
 			# Get the data type
-			data_type = unpack_uint(self._reply[50:52])
 			status = unpack_sint(self._reply[48:49])
 			if status == SUCCESS:
 				try:
+					data_type = unpack_uint(self._reply[50:52])
 					return UNPACK_DATA_FUNCTION[I_DATA_TYPE[data_type]](self._reply[52:]), I_DATA_TYPE[data_type]
 				except LookupError:
 					self._status = (6, "Unknown data type returned by read_tag")
 					self.logger.warning(self._status)
 					return None
 			else:
-				if get_extended_status(self._reply, 48) == EXTEND_CODES[4][0]:
-					return -1, 0
+				ext_status = get_extended_status(self._reply, 48)
+				self._status = (6, "Read Tag status: {0} | Extended Status: {1}".format(SERVICE_STATUS[status], ext_status))
+				self.logger.warning(self._status)
+				return -1, 0
 
 	def read_array(self, tag, counts):
 		""" read array of atomic data type from a connected plc
@@ -709,6 +713,7 @@ class Driver(object):
 		self._byte_offset = 0
 		self._last_position = 0
 
+		self._tag_array = []
 		while self._byte_offset != -1:
 			rp = create_tag_rp(tag)
 			if rp is None:
@@ -726,7 +731,6 @@ class Driver(object):
 					pack_dint(self._byte_offset)
 				]
 
-			self._tag_array = []
 			self.send_unit_data(
 				build_common_packet_format(
 					DATA_ITEM['Connected'],
@@ -735,14 +739,22 @@ class Driver(object):
 					addr_data=self._target_cid,
 				))
 
-		# Get the data type
-		data_type = unpack_uint(self._reply[50:52])
-		try:
-			return self._tag_array, I_DATA_TYPE[data_type]
-		except LookupError:
-			self._status = (6, "Unknown data type returned by read_array")
+		status = unpack_sint(self._reply[48:49])
+		if status == SUCCESS:
+			# Get the data type
+			data_type = unpack_uint(self._reply[50:52])
+			try:
+				return self._tag_array, I_DATA_TYPE[data_type]
+			except LookupError:
+				self._status = (6, "Unknown data type returned by read_array {0} {1}".format(status, data_type))
+				self.logger.warning(self._status)
+				return None
+		else:
+			ext_status = get_extended_status(self._reply, 48)
+			self._status = (6, "Read Tag status: {0} | Extended Status: {1}".format(SERVICE_STATUS[status], ext_status))
 			self.logger.warning(self._status)
-			return None
+			return -1, 0
+
 		#return self._tag_list
 
 	def write_tag(self, tag, value=None, typ=None):
@@ -962,7 +974,7 @@ class Driver(object):
 				pack_uint(3),   # Number of attributes to retrieve
 				pack_uint(1),   # Attribute 1: Symbol name
 				pack_uint(2),    # Attribute 2: Symbol type
-				pack_uint(3)  # Attribute 4: ?
+				pack_uint(3)  # Attribute 3: ?
 			]
 
 			self.send_unit_data(
