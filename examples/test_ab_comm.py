@@ -26,11 +26,11 @@ if __name__ == '__main__':
         # To read an array
         r_array = c.read_array("TotalCount", 1750)
         for tag in r_array:
-            print (tag)
+            print(tag)
 
         # reset tha array to all 0
         w_array = []
-        for i in xrange(1750):
+        for i in range(1750):
             w_array.append(0)
         c.write_array("TotalCount", "SINT", w_array)
 

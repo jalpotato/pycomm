@@ -276,7 +276,7 @@ class Driver(object):
 		attrs_returned = self._reply[start_tag_ptr:]
 		attrs_returned_length = len(attrs_returned)
 		if attrs_returned_length < 30:
-			print attrs_returned_length
+			print(attrs_returned_length)
 			self._status = (1, 'response too short _parse_tag_struct')
 			return
 
@@ -1097,13 +1097,13 @@ class Driver(object):
 				member += 1
 
 			member = 0
-			names = string.split(template_returned[idx:], '\x00')
+			names = template_returned[idx:].split('\x00')
 			if len(names) < mem_cnt + 1:
 				err = "Failed to read member names {" + str(len(names)) + "} {" + str(mem_cnt + 1) + "}."
 				raise Exception(err)
 
 			while member < mem_cnt:
-				#template_members[member]['member_name'] = names[member + 1]
+				# template_members[member]['member_name'] = names[member + 1]
 				template_members[member]['tag_name'] = names[member + 1]
 				member += 1
 

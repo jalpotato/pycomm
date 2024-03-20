@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pycomm"
+authors = [
+    {name = "Agostino Ruscito", email = "uscito@gmail.com"},
+    {name = "Kenneth Watka", email = "kaw60@cwru.edu"},
+]
+description = "A PLC communication library for Python"
+readme = "README.rst"
+requires-python = ">=2.7"
+license = {text = "MIT"}
+dynamic = ["version"]
+
+[tool.setuptools.packages.find]
+# All the following settings are optional:
+where = ["."]  # ["."] by default
+include = ["pycomm*"]  # ["*"] by default
